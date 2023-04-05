@@ -9,10 +9,8 @@ import ai_functions as ai
 from file_operations import read_file, write_to_file, append_to_file, delete_file
 from execute_code import execute_python_file
 from json_parser import fix_and_parse_json
-from duckduckgo_search import ddg
-from googleapiclient.discovery import build
-from googleapiclient.errors import HttpError
-
+import requests
+from googlesearch import search
 cfg = Config()
 
 
@@ -47,13 +45,9 @@ def get_command(response):
 def execute_command(command_name, arguments):
     try:
         if command_name == "google":
-            
-            # Check if the Google API key is set and use the official search method
-            # If the API key is not set or has only whitespaces, use the unofficial search method
-            if cfg.google_api_key and (cfg.google_api_key.strip() if cfg.google_api_key else None):
-                return google_official_search(arguments["input"])
-            else:
-                return google_search(arguments["input"])
+            return google_search(arguments["input"])
+        elif command_name == "wikidata":
+            return wikidata_search(arguments["input"])
         elif command_name == "memory_add":
             return commit_memory(arguments["string"])
         elif command_name == "memory_del":
@@ -72,7 +66,7 @@ def execute_command(command_name, arguments):
         elif command_name == "delete_agent":
             return delete_agent(arguments["key"])
         elif command_name == "get_text_summary":
-            return get_text_summary(arguments["url"], arguments["question"])
+            return get_text_summary(arguments["url"])
         elif command_name == "get_hyperlinks":
             return get_hyperlinks(arguments["url"])
         elif command_name == "read_file":
@@ -84,7 +78,7 @@ def execute_command(command_name, arguments):
         elif command_name == "delete_file":
             return delete_file(arguments["file"])
         elif command_name == "browse_website":
-            return browse_website(arguments["url"], arguments["question"])
+            return browse_website(arguments["url"])
         # TODO: Change these to take in a file rather than pasted code, if
         # non-file is given, return instructions "Input should be a python
         # filepath, write your code to file and try again"
@@ -112,48 +106,31 @@ def get_datetime():
 
 def google_search(query, num_results=8):
     search_results = []
-    for j in ddg(query, max_results=num_results):
+    for j in search(query, num_results=num_results):
         search_results.append(j)
 
     return json.dumps(search_results, ensure_ascii=False, indent=4)
 
-def google_official_search(query, num_results=8):
-    from googleapiclient.discovery import build
-    from googleapiclient.errors import HttpError
-    import json
+def wikidata_search(query, num_results=8):
+    url = 'https://www.wikidata.org/w/api.php'
+    params = {
+        'action': 'wbsearchentities',
+        'format': 'json',
+        'language': 'en',
+        'search': query
+    }
 
-    try:
-        # Get the Google API key and Custom Search Engine ID from the config file
-        api_key = cfg.google_api_key
-        custom_search_engine_id = cfg.custom_search_engine_id
+    response = requests.get(url, params=params)
+    response_data = response.json()
 
-        # Initialize the Custom Search API service
-        service = build("customsearch", "v1", developerKey=api_key)
-        
-        # Send the search query and retrieve the results
-        result = service.cse().list(q=query, cx=custom_search_engine_id, num=num_results).execute()
+    search_results = response_data.get('search', [])[:num_results]
+    search_results_links = [f'https://www.wikidata.org/wiki/{item["id"]}' for item in search_results]
 
-        # Extract the search result items from the response
-        search_results = result.get("items", [])
-        
-        # Create a list of only the URLs from the search results
-        search_results_links = [item["link"] for item in search_results]
-
-    except HttpError as e:
-        # Handle errors in the API call
-        error_details = json.loads(e.content.decode())
-        
-        # Check if the error is related to an invalid or missing API key
-        if error_details.get("error", {}).get("code") == 403 and "invalid API key" in error_details.get("error", {}).get("message", ""):
-            return "Error: The provided Google API key is invalid or missing."
-        else:
-            return f"Error: {e}"
-
-    # Return the list of search result URLs
     return search_results_links
 
-def browse_website(url, question):
-    summary = get_text_summary(url, question)
+
+def browse_website(url):
+    summary = get_text_summary(url)
     links = get_hyperlinks(url)
 
     # Limit links to 5
@@ -165,9 +142,9 @@ def browse_website(url, question):
     return result
 
 
-def get_text_summary(url, question):
+def get_text_summary(url):
     text = browse.scrape_text(url)
-    summary = browse.summarize_text(text, question)
+    summary = browse.summarize_text(text)
     return """ "Result" : """ + summary
 
 
