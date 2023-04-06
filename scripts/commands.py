@@ -122,6 +122,9 @@ def wikidata_search(query, num_results=8):
 
     response = requests.get(url, params=params)
     response_data = response.json()
+    
+    # Print raw response data for debugging
+    print("Raw response data:", response_data)
 
     search_results = response_data.get('search', [])[:num_results]
     search_results_links = [f'https://www.wikidata.org/wiki/{item["id"]}' for item in search_results]
